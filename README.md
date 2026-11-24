@@ -1,68 +1,86 @@
+<div align="center">
+
+**English** · [Italiano](README_it.md)
+
 # RGBController 🌈
 
-App desktop Windows per il controllo unificato di **LED RGB** (scheda madre, ventole ARGB, RAM, periferiche), **ventole e temperature** e **monitoraggio raffreddamento a liquido AIO** (alternativa user-friendly a TRCC), con driver nativi e persistenza automatica delle impostazioni.
+A lightweight, standalone Windows desktop app to control **Motherboard RGB & ARGB headers**, **DDR4 & DDR5 RAM RGB**, **peripherals**, **fan speeds & temperatures**, and **AIO liquid cooler LCD monitoring** (a user-friendly alternative to TRCC) — with native drivers and automatic settings persistence.
 
-## Funzionalità principali
+</div>
 
-| Funzione | Descrizione |
+---
+
+## Features
+
+| Feature | Description |
 |---|---|
-| **Driver RGB nativi** | Controllo diretto via Windows HID per schede madri Gigabyte (`IT5702` / `IT8297`, inclusi header ARGB `D_LED1`/`D_LED2`) e tastiere Logitech HID++ (`G213`, ecc.) |
-| **RAM RGB su SMBus** | Controllo nativo delle RAM HyperX / Kingston Fury DDR4 RGB via `SensorBridge` (`SMBusI801`) |
-| **Monitor Raffreddamento & LCD** | Dashboard stile TRCC user-friendly con telemetria live (CPU/GPU temp, carico, RPM) e anteprima display AIO personalizzabile |
-| **Ventole & Temperature** | Lettura RPM, regolazione velocità (Auto/Manual), nomi personalizzabili e gauge termiche animate |
-| **Profili & Persistenza** | Salvataggio automatico dell'ultima configurazione in `config/settings.json` e gestione profili |
+| **Universal Motherboards** | Native Windows HID drivers for **Gigabyte** (`IT5702` / `IT8297`, including `D_LED1` / `D_LED2` 5V ARGB headers), **ASUS Aura Sync**, **MSI Mystic Light**, and **ASRock Polychrome** |
+| **DDR4 & DDR5 RAM RGB** | Native SMBus support via `SensorBridge` (`SMBusI801` Intel & `SMBusPiix4` AMD) for **Kingston HyperX Fury/Predator DDR4**, **ENE / Aura DRAM DDR4 & DDR5** (G.Skill Trident Z/Z5, ASUS, Kingston Fury DDR5, TeamGroup, ADATA), and **Corsair Vengeance / Dominator** |
+| **Peripherals** | Native Logitech HID++ 2.0 support (`G213`, `G513`, `G610`, `G413`, `G815`) |
+| **Liquid Cooler & LCD Monitor** | User-friendly TRCC-style dashboard with live CPU/GPU temperatures, load telemetry, fan/pump RPM, and customizable 1:1 AIO LCD preview |
+| **Fans & Temperatures** | Live RPM readout, Auto/Manual fan duty control, custom fan labels, and animated temperature gauges |
+| **Sync & Profiles** | One-click sync across all devices, automatic startup restoration (`config/settings.json`), and named profiles |
 
-## Installazione rapida (da fare una volta)
+---
 
-Requisiti: **Windows 10/11 (x64)** e **Python 3.10+**.
+## Quick Start
 
-1. Scarica o clona questo repository:
+**Requirements:** Windows 10/11 (64-bit) and Python 3.10+.
+
+1. Clone this repository:
    ```bat
    git clone https://github.com/CororoYT/RgbController.git
    cd RgbController
    ```
-2. Esegui lo script di setup automatico (scarica `LibreHardwareMonitorLib.dll`, installa i pacchetti Python, compila `SensorBridge.exe` e crea il collegamento sul Desktop):
+2. Run the automated setup script (installs Python packages, downloads `LibreHardwareMonitorLib.dll` & `RAMSPDToolkit-NDD.dll`, compiles `SensorBridge.exe`, and creates a Desktop shortcut):
    ```bat
    python install.py
    ```
-3. Avvia l'app con privilegi **Amministratore** (necessari per leggere ventole della scheda madre e RAM SMBus):
-   - Doppio click su **`Avvia.bat`** (oppure sul collegamento **`RGBController (Admin).vbs`** creato sul Desktop).
+3. Launch the app as **Administrator** (required for motherboard fan headers and SMBus RAM access):
+   - Double-click **`Avvia.bat`** (or **`RGBController (Admin).vbs`** on your Desktop).
 
-## Struttura del progetto
+---
+
+## Project Structure
 
 ```
 RgbController/
-├── Avvia.bat                  ← Launcher Windows con elevazione UAC
-├── install.py                 ← Setup automatico dipendenze e compilazione SensorBridge
-├── launcher.py                ← Avvio rapido dell'app
-├── main.py                    ← Entry point GUI
-├── requirements.txt           ← Dipendenze Python
+├── Avvia.bat                  ← Windows UAC launcher
+├── install.py                 ← One-click dependency & SensorBridge setup
+├── launcher.py                ← App launcher
+├── main.py                    ← GUI entry point
+├── requirements.txt           ← Python dependencies
 ├── core/
-│   ├── app_controller.py      ← Orchestratore centrale
-│   ├── hardware_detector.py   ← Rilevamento hardware e sensori
-│   ├── rgb_controller.py      ← Router driver RGB
-│   ├── fan_controller.py      ← Controllo velocità ventole
-│   ├── sensor_bridge.py       ← Client IPC per SensorBridge.exe
-│   ├── SensorBridge.cs        ← Servizio nativo C# (sensori, ventole, SMBus RAM)
-│   ├── settings_manager.py    ← Persistenza JSON
+│   ├── app_controller.py      ← Central orchestrator
+│   ├── hardware_detector.py   ← Hardware & sensor auto-detection
+│   ├── rgb_controller.py      ← Multi-vendor RGB driver router
+│   ├── fan_controller.py      ← Fan speed controller
+│   ├── sensor_bridge.py       ← IPC client for SensorBridge.exe
+│   ├── SensorBridge.cs        ← Native C# service (fans, temps, DDR4/DDR5 SMBus RAM)
+│   ├── settings_manager.py    ← JSON persistence
 │   └── drivers/
-│       ├── hid_win.py         ← Wrapper nativo Windows SetupAPI / HID
-│       ├── it5702_hid.py      ← Driver Gigabyte IT5702 / IT8297 + D_LED1/D_LED2
-│       └── logitech_g213_hid.py ← Driver tastiere Logitech HID++ 2.0
+│       ├── hid_win.py         ← Native Windows SetupAPI / HID wrapper
+│       ├── it5702_hid.py      ← Gigabyte IT5702 / IT8297 + D_LED1/D_LED2 driver
+│       ├── asus_aura_hid.py   ← ASUS Aura Sync USB driver
+│       ├── msi_mystic_hid.py  ← MSI Mystic Light USB driver
+│       ├── asrock_hid.py      ← ASRock Polychrome USB driver
+│       └── logitech_g213_hid.py ← Logitech HID++ 2.0 keyboard driver
 └── gui/
-    ├── main_window.py         ← Finestra principale + sidebar
+    ├── main_window.py         ← Main window & sidebar navigation
     ├── pages/
-    │   ├── rgb_page.py        ← Controllo RGB LED, zone ARGB e sync
-    │   ├── cooler_page.py     ← Monitor raffreddamento & display LCD
-    │   ├── fan_page.py        ← Ventole & gauge temperature
-    │   ├── profiles_page.py   ← Gestione profili
-    │   └── settings_page.py   ← Impostazioni app
+    │   ├── rgb_page.py        ← RGB LED, ARGB zones & sync page
+    │   ├── cooler_page.py     ← Liquid cooler & LCD monitor page
+    │   ├── fan_page.py        ← Fans & temperature gauges page
+    │   ├── profiles_page.py   ← Profiles manager
+    │   └── settings_page.py   ← App settings
     └── widgets/
-        ├── color_picker.py    ← Ruota colori HSV
-        └── gauge.py           ← Gauge circolare animata
+        ├── color_picker.py    ← HSV color wheel
+        └── gauge.py           ← Animated circular gauge
 ```
 
-## Licenza e attribuzioni
+---
 
-- Codice sorgente dell'app rilasciato sotto licenza **MIT** (vedi `LICENSE`).
-- Il modulo `SensorBridge.cs` si appoggia alle librerie **LibreHardwareMonitorLib** e **RAMSPDToolkit** (scaricate automaticamente da `install.py` dai rispettivi repository ufficiali sotto licenza **MPL 2.0**).
+## License & Attributions
+
+- Application source code is licensed under the **MIT License** (see [LICENSE](LICENSE)).
+- `SensorBridge.cs` uses **LibreHardwareMonitorLib** and **RAMSPDToolkit** (automatically downloaded by `install.py` from their official releases under **MPL 2.0**).
