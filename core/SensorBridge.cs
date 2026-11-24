@@ -11,8 +11,12 @@ namespace SensorBridge
     {
         static Computer _computer;
         static Dictionary<string, IControl> _controls = new Dictionary<string, IControl>();
-        static List<SMBusInterface> _ramBuses = new List<SMBusInterface>();
-        static bool _hasHyperX = false;
+
+        // Controller RAM rilevati su bus SMBus (Intel I801 / AMD PIIX4 / PawnIO)
+        static List<SMBusInterface> _hyperxBuses = new List<SMBusInterface>();
+        static List<KeyValuePair<SMBusInterface, byte>> _eneDevices = new List<KeyValuePair<SMBusInterface, byte>>();
+        static List<KeyValuePair<SMBusInterface, byte>> _corsairDevices = new List<KeyValuePair<SMBusInterface, byte>>();
+        static string _ramModelName = "";
 
         static void Main(string[] args)
         {
@@ -86,22 +90,14 @@ namespace SensorBridge
                 }
                 else if (line.StartsWith("RAMRGB "))
                 {
-                    // RAMRGB <mode> <r> <g> <b> <brightness>
                     string[] parts = line.Split(' ');
-                    if (parts.Length >= 6)
+                    int r, g, b, bright;
+                    if (parts.Length >= 6 &&
+                        int.TryParse(parts[2], out r) && int.TryParse(parts[3], out g) &&
+                        int.TryParse(parts[4], out b) && int.TryParse(parts[5], out bright))
                     {
-                        string mode = parts[1];
-                        int r, g, b, bright;
-                        if (int.TryParse(parts[2], out r) && int.TryParse(parts[3], out g) &&
-                            int.TryParse(parts[4], out b) && int.TryParse(parts[5], out bright))
-                        {
-                            bool ok = SetHyperXRgb(mode, r, g, b, bright);
-                            Console.WriteLine("{\"ok\":" + (ok ? "true" : "false") + "}");
-                        }
-                        else
-                        {
-                            Console.WriteLine("{\"ok\":false}");
-                        }
+                        bool ok = SetAllRamRgb(parts[1], r, g, b, bright);
+                        Console.WriteLine("{\"ok\":" + (ok ? "true" : "false") + "}");
                     }
                     else
                     {
@@ -114,60 +110,100 @@ namespace SensorBridge
             try { _computer.Close(); } catch { }
         }
 
+        // ------------------------------------------------------------------ //
+        // Rilevamento universale RAM RGB DDR4 & DDR5 su SMBus                //
+        // ------------------------------------------------------------------ //
+
         static void DetectRamRgb()
         {
-            _ramBuses.Clear();
-            _hasHyperX = false;
+            _hyperxBuses.Clear();
+            _eneDevices.Clear();
+            _corsairDevices.Clear();
+            _ramModelName = "";
+
             try
             {
                 SMBusManager.DetectSMBuses();
-                var logLines = new List<string>();
                 foreach (var bus in SMBusManager.RegisteredSMBuses)
                 {
                     if (bus == null) continue;
                     string bname = bus.DeviceName ?? "";
-                    logLines.Add("BUS: " + bname + " VID=0x" + bus.PCIVendor.ToString("X4") + " DID=0x" + bus.PCIDevice.ToString("X4"));
-                    // Escludi bus GPU (NVAPI / ADL): le RAM sono su I801 / PIIX4 / PawnIO
                     if (bname.IndexOf("NVAPI", StringComparison.OrdinalIgnoreCase) >= 0 ||
                         bname.IndexOf("ADL", StringComparison.OrdinalIgnoreCase) >= 0)
                         continue;
 
+                    // 1) Kingston HyperX Fury / Predator DDR4 (0x27)
                     try
                     {
-                        int p27 = bus.i2c_smbus_read_byte_data(0x27, 0x00);
-                        logLines.Add("  probe 0x27 = " + p27);
-                        if (p27 >= 0)
+                        if (bus.i2c_smbus_read_byte_data(0x27, 0x00) >= 0)
                         {
-                            _ramBuses.Add(bus);
-                            _hasHyperX = true;
+                            _hyperxBuses.Add(bus);
+                            if (string.IsNullOrEmpty(_ramModelName))
+                                _ramModelName = "Kingston HyperX RGB (SMBus)";
                         }
                     }
-                    catch (Exception ex)
+                    catch { }
+
+                    // 2) ENE / Aura DRAM DDR4 & DDR5 (G.Skill Trident Z/Z5, ASUS, Kingston Fury DDR5, TeamGroup, ADATA: 0x70..0x77)
+                    for (byte addr = 0x70; addr <= 0x77; addr++)
                     {
-                        logLines.Add("  probe 0x27 err = " + ex.Message);
+                        try
+                        {
+                            bus.i2c_smbus_write_byte_data(addr, 0x00, 0x80);
+                            bus.i2c_smbus_write_byte_data(addr, 0x01, 0xF8);
+                            int sig = bus.i2c_smbus_read_byte_data(addr, 0x81);
+                            if (sig >= 0)
+                            {
+                                _eneDevices.Add(new KeyValuePair<SMBusInterface, byte>(bus, addr));
+                                if (string.IsNullOrEmpty(_ramModelName))
+                                    _ramModelName = "ENE / Aura DRAM DDR4-DDR5 (SMBus)";
+                            }
+                        }
+                        catch { }
+                    }
+
+                    // 3) Corsair Vengeance / Dominator DDR4 & DDR5 (0x58..0x5F)
+                    for (byte addr = 0x58; addr <= 0x5F; addr++)
+                    {
+                        try
+                        {
+                            int sig = bus.i2c_smbus_read_byte_data(addr, 0x43);
+                            if (sig >= 0)
+                            {
+                                _corsairDevices.Add(new KeyValuePair<SMBusInterface, byte>(bus, addr));
+                                if (string.IsNullOrEmpty(_ramModelName))
+                                    _ramModelName = "Corsair Vengeance / Dominator RGB (SMBus)";
+                            }
+                        }
+                        catch { }
                     }
                 }
-                try
-                {
-                    string logPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", "config", "ram_debug.log");
-                    System.IO.File.WriteAllLines(logPath, logLines);
-                }
-                catch { }
             }
             catch { }
         }
 
-        static bool SetHyperXRgb(string mode, int r, int g, int b, int brightness)
+        static bool HasAnyRamRgb()
         {
-            if (!_hasHyperX || _ramBuses.Count == 0)
-                return false;
+            return _hyperxBuses.Count > 0 || _eneDevices.Count > 0 || _corsairDevices.Count > 0;
+        }
 
+        static bool SetAllRamRgb(string mode, int r, int g, int b, int brightness)
+        {
             byte sr = (byte)Math.Max(0, Math.Min(255, r));
             byte sg = (byte)Math.Max(0, Math.Min(255, g));
             byte sb = (byte)Math.Max(0, Math.Min(255, b));
             byte bright = (byte)Math.Max(0, Math.Min(100, brightness));
 
-            // Registri controller HyperX / Kingston Fury DDR4 RGB (indirizzo SMBus 0x27)
+            bool ok = false;
+            if (_hyperxBuses.Count > 0) ok |= SetHyperXRgb(mode, sr, sg, sb, bright);
+            if (_eneDevices.Count > 0) ok |= SetEneRamRgb(mode, sr, sg, sb, bright);
+            if (_corsairDevices.Count > 0) ok |= SetCorsairRamRgb(sr, sg, sb, bright);
+            return ok;
+        }
+
+        // ---- 1. Kingston HyperX DDR4 (0x27) ----
+        static bool SetHyperXRgb(string mode, byte sr, byte sg, byte sb, byte bright)
+        {
             const byte DEV = 0x27;
             const byte REG_EFFECT_BRIGHTNESS = 0xDD;
             const byte REG_APPLY = 0xE1;
@@ -176,7 +212,7 @@ namespace SensorBridge
             const byte REG_EFFECT_RED = 0xEC;
             const byte REG_EFFECT_GREEN = 0xED;
             const byte REG_EFFECT_BLUE = 0xEE;
-            const byte REG_TIMER_MSB = 0xD1;   // velocità effetti animati
+            const byte REG_TIMER_MSB = 0xD1;
             const byte REG_TIMER_LSB = 0xD2;
             const byte REG_FADE_IN_MSB = 0xD7;
             const byte REG_FADE_IN_LSB = 0xD8;
@@ -184,20 +220,19 @@ namespace SensorBridge
             const byte REG_FADE_OUT_LSB = 0xDA;
 
             bool anyOk = false;
-            foreach (var bus in _ramBuses)
+            foreach (var bus in _hyperxBuses)
             {
                 try
                 {
-                    // 1) Colore + luminosità dell'effetto
                     if (bus.i2c_smbus_write_byte_data(DEV, REG_APPLY, 0x01) < 0)
                         continue;
                     bus.i2c_smbus_write_byte_data(DEV, REG_EFFECT_RED, sr);
                     bus.i2c_smbus_write_byte_data(DEV, REG_EFFECT_GREEN, sg);
                     bus.i2c_smbus_write_byte_data(DEV, REG_EFFECT_BLUE, sb);
                     bus.i2c_smbus_write_byte_data(DEV, REG_EFFECT_BRIGHTNESS, bright);
-                    SendApply(bus, DEV, REG_APPLY);
+                    bus.i2c_smbus_write_byte_data(DEV, REG_APPLY, 0x02);
+                    bus.i2c_smbus_write_byte_data(DEV, REG_APPLY, 0x03);
 
-                    // 2) Modalità
                     bus.i2c_smbus_write_byte_data(DEV, REG_APPLY, 0x01);
                     if (mode == "Rainbow" || mode == "Wave")
                     {
@@ -206,9 +241,7 @@ namespace SensorBridge
                         bus.i2c_smbus_write_byte_data(DEV, REG_TIMER_LSB, 0x64);
                     }
                     else if (mode == "Color_Cycle")
-                    {
                         bus.i2c_smbus_write_byte_data(DEV, REG_MODE_RANDOM, 0x04);
-                    }
                     else if (mode == "Breathing")
                     {
                         bus.i2c_smbus_write_byte_data(DEV, REG_MODE_CUSTOM, 0x03);
@@ -218,18 +251,14 @@ namespace SensorBridge
                         bus.i2c_smbus_write_byte_data(DEV, REG_FADE_OUT_LSB, 0xE8);
                     }
                     else if (mode == "Flicker")
-                    {
                         bus.i2c_smbus_write_byte_data(DEV, REG_MODE_CUSTOM, 0x06);
-                    }
                     else if (mode == "Chase")
-                    {
                         bus.i2c_smbus_write_byte_data(DEV, REG_MODE_CUSTOM, 0x08);
-                    }
                     else
-                    {
-                        bus.i2c_smbus_write_byte_data(DEV, REG_MODE_CUSTOM, 0x09); // Static
-                    }
-                    SendApply(bus, DEV, REG_APPLY);
+                        bus.i2c_smbus_write_byte_data(DEV, REG_MODE_CUSTOM, 0x09);
+
+                    bus.i2c_smbus_write_byte_data(DEV, REG_APPLY, 0x02);
+                    bus.i2c_smbus_write_byte_data(DEV, REG_APPLY, 0x03);
                     anyOk = true;
                 }
                 catch { }
@@ -237,11 +266,100 @@ namespace SensorBridge
             return anyOk;
         }
 
-        static void SendApply(SMBusInterface bus, byte dev, byte regApply)
+        // ---- 2. ENE / Aura / G.Skill / Kingston DDR5 (0x70..0x77) ----
+        static void EneWriteReg(SMBusInterface bus, byte addr, ushort reg, byte val)
         {
-            bus.i2c_smbus_write_byte_data(dev, regApply, 0x02);
-            bus.i2c_smbus_write_byte_data(dev, regApply, 0x03);
+            bus.i2c_smbus_write_byte_data(addr, 0x00, (byte)(reg >> 8));
+            bus.i2c_smbus_write_byte_data(addr, 0x01, (byte)(reg & 0xFF));
+            bus.i2c_smbus_write_byte_data(addr, 0x03, val);
         }
+
+        static bool SetEneRamRgb(string mode, byte sr, byte sg, byte sb, byte bright)
+        {
+            float f = bright / 100f;
+            byte cr = (byte)Math.Round(sr * f);
+            byte cg = (byte)Math.Round(sg * f);
+            byte cb = (byte)Math.Round(sb * f);
+
+            byte eneMode = 0x01; // Static
+            if (mode == "Breathing") eneMode = 0x02;
+            else if (mode == "Flicker" || mode == "Chase") eneMode = 0x03;
+            else if (mode == "Color_Cycle") eneMode = 0x04;
+            else if (mode == "Rainbow" || mode == "Wave") eneMode = 0x05;
+
+            bool anyOk = false;
+            foreach (var kv in _eneDevices)
+            {
+                var bus = kv.Key;
+                byte addr = kv.Value;
+                try
+                {
+                    EneWriteReg(bus, addr, 0x8020, eneMode);
+                    EneWriteReg(bus, addr, 0x8021, 0x00); // speed
+                    EneWriteReg(bus, addr, 0x8022, 0x00); // direction
+                    // ENE usa ordine R, B, G a partire da 0x8000 (fino a 10 LED)
+                    for (int i = 0; i < 10; i++)
+                    {
+                        ushort baseReg = (ushort)(0x8000 + i * 3);
+                        EneWriteReg(bus, addr, baseReg, cr);
+                        EneWriteReg(bus, addr, (ushort)(baseReg + 1), cb);
+                        EneWriteReg(bus, addr, (ushort)(baseReg + 2), cg);
+                    }
+                    EneWriteReg(bus, addr, 0x802F, 0x01); // Apply
+                    anyOk = true;
+                }
+                catch { }
+            }
+            return anyOk;
+        }
+
+        // ---- 3. Corsair Vengeance / Dominator DDR4 & DDR5 (0x58..0x5F) ----
+        static byte Crc8(byte[] data, int len)
+        {
+            byte crc = 0;
+            for (int i = 0; i < len; i++)
+            {
+                crc ^= data[i];
+                for (int b = 0; b < 8; b++)
+                    crc = (byte)((crc & 0x80) != 0 ? (crc << 1) ^ 0x07 : (crc << 1));
+            }
+            return crc;
+        }
+
+        static bool SetCorsairRamRgb(byte sr, byte sg, byte sb, byte bright)
+        {
+            float f = bright / 100f;
+            byte cr = (byte)Math.Round(sr * f);
+            byte cg = (byte)Math.Round(sg * f);
+            byte cb = (byte)Math.Round(sb * f);
+
+            bool anyOk = false;
+            foreach (var kv in _corsairDevices)
+            {
+                var bus = kv.Key;
+                byte addr = kv.Value;
+                try
+                {
+                    // 10 LED x 3 byte (R,G,B) + CRC8 su comando 0x31
+                    byte[] pkt = new byte[31];
+                    for (int i = 0; i < 10; i++)
+                    {
+                        pkt[i * 3 + 0] = cr;
+                        pkt[i * 3 + 1] = cg;
+                        pkt[i * 3 + 2] = cb;
+                    }
+                    pkt[30] = Crc8(pkt, 30);
+                    bus.i2c_smbus_write_block_data(addr, 0x31, 31, pkt);
+                    anyOk = true;
+                }
+                catch { }
+            }
+            return anyOk;
+        }
+
+        // ------------------------------------------------------------------ //
+        // Controllo Ventole                                                   //
+        // ------------------------------------------------------------------ //
 
         static bool SetControl(string id, float duty)
         {
@@ -294,7 +412,8 @@ namespace SensorBridge
             return "{\"fans\":[" + string.Join(",", fans) + "]," +
                    "\"temps\":[" + string.Join(",", temps) + "]," +
                    "\"loads\":[" + string.Join(",", loads) + "]," +
-                   "\"ram_rgb\":" + (_hasHyperX ? "true" : "false") + "}";
+                   "\"ram_rgb\":" + (HasAnyRamRgb() ? "true" : "false") + "," +
+                   "\"ram_model\":" + JsonStr(_ramModelName) + "}";
         }
 
         static void UpdateHardwareRecursive(IHardware hw, List<ISensor> controlsList)

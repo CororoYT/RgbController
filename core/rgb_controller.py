@@ -1,9 +1,15 @@
 """
-rgb_controller.py – Controller RGB 100% nativo (Windows HID diretto + SMBus RAM via SensorBridge).
+rgb_controller.py – Controller RGB 100% nativo e multi-marca:
+  - Schede Madri: Gigabyte (IT5702/IT8297), ASUS Aura, MSI Mystic Light, ASRock Polychrome
+  - RAM DDR4 & DDR5: HyperX Fury/Predator, ENE/Aura/G.Skill/Kingston DDR5, Corsair Vengeance/Dominator
+  - Periferiche: Tastiere Logitech HID++
 """
 from __future__ import annotations
 import logging
 from core.drivers.it5702_hid import IT5702Driver, IT5702_ZONES
+from core.drivers.asus_aura_hid import AsusAuraDriver
+from core.drivers.msi_mystic_hid import MsiMysticDriver
+from core.drivers.asrock_hid import AsrockDriver
 from core.drivers.logitech_g213_hid import LogitechG213Driver
 from core.sensor_bridge import SensorBridgeClient
 
@@ -16,27 +22,41 @@ class RGBController:
     """Gestisce tutti i dispositivi RGB tramite driver HID nativi e SMBus."""
 
     def __init__(self):
-        self._mobo = IT5702Driver()
+        self._mobo_drivers = [
+            ("it5702", IT5702Driver()),
+            ("asus_aura", AsusAuraDriver()),
+            ("msi_mystic", MsiMysticDriver()),
+            ("asrock", AsrockDriver()),
+        ]
         self._g213 = LogitechG213Driver()
         self._bridge = SensorBridgeClient()
         self._devices: list[dict] = []
+        self._active_drivers: dict[str, object] = {}
         self._connected = False
 
     def connect(self, _host: str = "127.0.0.1", _port: int = 6742) -> bool:
         self._devices.clear()
+        self._active_drivers.clear()
         next_id = 0
 
-        if self._mobo.detect():
-            self._devices.append({
-                "id": next_id,
-                "driver": "it5702",
-                "name": self._mobo.chip_name,
-                "type": "MOBO",
-                "zones": IT5702_ZONES,
-            })
-            next_id += 1
+        # 1) Rileva qualsiasi scheda madre supportata (Gigabyte, ASUS, MSI, ASRock)
+        for key, drv in self._mobo_drivers:
+            if drv.detect():
+                self._active_drivers[key] = drv
+                zones = IT5702_ZONES if key == "it5702" else drv.zones
+                name = drv.chip_name if key == "it5702" else drv.name
+                self._devices.append({
+                    "id": next_id,
+                    "driver": key,
+                    "name": name,
+                    "type": "MOBO",
+                    "zones": zones,
+                })
+                next_id += 1
 
+        # 2) Periferiche HID++
         if self._g213.detect():
+            self._active_drivers["g213"] = self._g213
             self._devices.append({
                 "id": next_id,
                 "driver": "g213",
@@ -46,15 +66,16 @@ class RGBController:
             })
             next_id += 1
 
-        # Verifica se SensorBridge ha rilevato RAM RGB su bus SMBus
+        # 3) RAM DDR4 / DDR5 su SMBus tramite SensorBridge
         snap = self._bridge.get_snapshot()
         if snap.get("ram_rgb"):
+            ram_name = snap.get("ram_model") or "RAM RGB (SMBus)"
             self._devices.append({
                 "id": next_id,
                 "driver": "ram_smbus",
-                "name": "RAM RGB (SMBus)",
+                "name": ram_name,
                 "type": "RAM",
-                "zones": [{"index": 0, "name": "Moduli RAM", "leds": 8, "resizable": False}],
+                "zones": [{"index": 0, "name": "Moduli RAM", "leds": 10, "resizable": False}],
             })
             next_id += 1
 
@@ -82,12 +103,14 @@ class RGBController:
         dev = self._find_dev(device_id)
         if not dev:
             return False
-        if dev["driver"] == "it5702":
-            return self._mobo.set_zone(zone_idx, r, g, b, brightness, "Static")
-        if dev["driver"] == "g213":
-            return self._g213.set_effect("Static", r, g, b, brightness)
-        if dev["driver"] == "ram_smbus":
+        key = dev["driver"]
+        if key == "ram_smbus":
             return self._bridge.set_ram_rgb("Static", r, g, b, brightness)
+        if key == "g213":
+            return self._g213.set_effect("Static", r, g, b, brightness)
+        drv = self._active_drivers.get(key)
+        if drv and hasattr(drv, "set_zone"):
+            return drv.set_zone(zone_idx, r, g, b, brightness, "Static")  # type: ignore[union-attr]
         return False
 
     def set_color(self, device_id: int, r: int, g: int, b: int, brightness: int = 100) -> bool:
@@ -105,12 +128,16 @@ class RGBController:
         dev = self._find_dev(device_id)
         if not dev:
             return False
-        if dev["driver"] == "it5702":
-            return self._mobo.set_all(r, g, b, brightness, effect_name)
-        if dev["driver"] == "g213":
-            return self._g213.set_effect(effect_name, r, g, b, brightness)
-        if dev["driver"] == "ram_smbus":
+        key = dev["driver"]
+        if key == "ram_smbus":
             return self._bridge.set_ram_rgb(effect_name, r, g, b, brightness)
+        if key == "g213":
+            return self._g213.set_effect(effect_name, r, g, b, brightness)
+        if key == "it5702":
+            return self._active_drivers["it5702"].set_all(r, g, b, brightness, effect_name)  # type: ignore[union-attr]
+        drv = self._active_drivers.get(key)
+        if drv and hasattr(drv, "set_effect"):
+            return drv.set_effect(effect_name, r, g, b, brightness)  # type: ignore[union-attr]
         return False
 
     def set_all_off(self) -> None:
