@@ -5,6 +5,7 @@ __pycache__/
 
 # Configurazione locale e credenziali
 config/settings.json
+config/native_settings.ini
 config/*.log
 
 # Binari di terze parti scaricati da install.py
