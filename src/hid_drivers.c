@@ -27,12 +27,6 @@ static bool hid_set_feat(HANDLE h, const uint8_t *buf, DWORD len) {
     return HidD_SetFeature(h, (PVOID)buf, len) != FALSE;
 }
 
-static bool hid_get_feat(HANDLE h, uint8_t report_id, uint8_t *buf, DWORD len) {
-    memset(buf, 0, len);
-    buf[0] = report_id;
-    return HidD_GetFeature(h, (PVOID)buf, len) != FALSE;
-}
-
 static bool hid_write_out(HANDLE h, const uint8_t *buf, DWORD len) {
     DWORD written = 0;
     return WriteFile(h, buf, len, &written, NULL) != FALSE;

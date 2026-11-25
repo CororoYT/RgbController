@@ -8,8 +8,8 @@ static HANDLE g_hInWrite = NULL;
 static HANDLE g_hOutRead = NULL;
 static CRITICAL_SECTION g_cs;
 static bool g_cs_init = false;
-static char g_exe_path[MAX_PATH] = {0};
-static char g_exe_dir[MAX_PATH]  = {0};
+static char g_exe_path[MAX_PATH + 64] = {0};
+static char g_exe_dir[MAX_PATH + 32]  = {0};
 
 static bool read_line_pipe(HANDLE h, char *buf, size_t max_len) {
     size_t pos = 0;
