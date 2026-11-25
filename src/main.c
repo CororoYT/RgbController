@@ -1,5 +1,7 @@
 #define _WIN32_WINNT 0x0A00
 #include <windows.h>
+#include <shellapi.h>
+#include <shlobj.h>
 #include <dwmapi.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -990,6 +992,20 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 
 int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmd, int nShow) {
     (void)hPrev; (void)lpCmd;
+
+    // Richiedi obbligatoriamente privilegi Amministratore (necessari per RAM SMBus e ventole scheda madre)
+    if (!IsUserAnAdmin()) {
+        char exePath[MAX_PATH];
+        GetModuleFileNameA(NULL, exePath, MAX_PATH);
+        HINSTANCE res = ShellExecuteA(NULL, "runas", exePath, NULL, NULL, SW_SHOWNORMAL);
+        if ((INT_PTR)res <= 32) {
+            MessageBoxA(NULL,
+                        "RGBController richiede i privilegi di Amministratore per controllare RAM e ventole.",
+                        "Privilegi richiesti", MB_OK | MB_ICONWARNING);
+        }
+        return 0;
+    }
+
     GetModuleFileNameA(NULL, g_base_dir, MAX_PATH);
     char *slash = strrchr(g_base_dir, '\\');
     if (slash) *slash = '\0';

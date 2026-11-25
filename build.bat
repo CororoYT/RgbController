@@ -8,6 +8,6 @@ if not exist "%GCC%" (
 "%GCC%" -O3 -march=native -std=c11 -Wall -Wextra -mwindows ^
     src\main.c src\hid_drivers.c src\sensor_ipc.c src\settings.c ^
     -o RGBController.exe ^
-    -luser32 -lgdi32 -lsetupapi -lhid -ldwmapi -ladvapi32 -lm
+    -luser32 -lgdi32 -lshell32 -lsetupapi -lhid -ldwmapi -ladvapi32 -lm
 if errorlevel 1 exit /b 1
 echo Compilazione RGBController.exe completata!
