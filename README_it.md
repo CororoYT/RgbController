@@ -26,7 +26,13 @@ Applicazione Windows **nativa in C11** leggera e velocissima (~144 KB) per il co
 
 ---
 
-## Compilazione e Avvio rapido
+## Installazione e Avvio rapido
+
+### Opzione A: Installer Automatico (Consigliato — Nessun compilatore richiesto)
+1. Scarica **`RGBController-Portable.zip`** (oppure **`Install.bat`**) dalla [Latest Release](https://github.com/CororoYT/RgbController/releases/latest).
+2. Estrai e avvia **`Install.bat`** (installa in `C:\Program Files\RGBController` e crea i collegamenti su Desktop e Menu Start) — oppure fai doppio click diretto su **`RGBController.exe`**.
+
+### Opzione B: Compilazione dai Sorgenti
 
 **Requisiti:** Windows 10/11 (64-bit), MinGW-w64 `gcc` (per `RGBController.exe`), e `.NET Framework 4.x csc.exe` + `LibreHardwareMonitorLib.dll` / `RAMSPDToolkit-NDD.dll` in `tools/LibreHardwareMonitor/` (per `SensorBridge.exe`).
 

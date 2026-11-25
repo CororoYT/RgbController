@@ -26,7 +26,13 @@ A lightweight, ultra-fast **native C11 Windows app** (~144 KB) to control **Moth
 
 ---
 
-## Quick Start (Build from Source)
+## Quick Start
+
+### Option A: One-Click Installer (Recommended — No compiler needed)
+1. Download **`RGBController-Portable.zip`** (or **`Install.bat`**) from the [Latest Release](https://github.com/CororoYT/RgbController/releases/latest).
+2. Extract and run **`Install.bat`** (automatically installs to `C:\Program Files\RGBController` and creates Desktop & Start Menu shortcuts) — or just double-click **`RGBController.exe`** directly.
+
+### Option B: Build from Source
 
 **Requirements:** Windows 10/11 (64-bit), MinGW-w64 `gcc` (for `RGBController.exe`), and `.NET Framework 4.x csc.exe` + `LibreHardwareMonitorLib.dll` / `RAMSPDToolkit-NDD.dll` in `tools/LibreHardwareMonitor/` (for `SensorBridge.exe`).
 
